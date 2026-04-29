@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Party Splitter</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{
+    margin:0;
+    background:#111;
+    color:#fff;
+    font-family:Arial,Helvetica,sans-serif;
+    padding:20px;
+}
+.container{
+    max-width:1400px;
+    margin:auto;
+}
+h1{
+    text-align:center;
+    margin-bottom:20px;
+}
+textarea{
+    width:100%;
+    height:320px;
+    background:#1a1a1a;
+    color:#fff;
+    border:1px solid #333;
+    border-radius:14px;
+    padding:15px;
+    resize:vertical;
+    box-sizing:border-box;
+}
+button{
+    width:100%;
+    padding:15px;
+    margin-top:12px;
+    border:none;
+    border-radius:14px;
+    background:#00b894;
+    color:#fff;
+    font-size:18px;
+    font-weight:bold;
+    cursor:pointer;
+}
+button:hover{background:#00a383;}
+select{
+    width:100%;
+    margin-top:20px;
+    padding:12px;
+    border-radius:12px;
+    background:#1a1a1a;
+    color:#fff;
+    border:1px solid #333;
+}
+.card{
+    background:#1a1a1a;
+    padding:15px;
+    border-radius:14px;
+    margin-top:20px;
+}
+table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:18px;
+}
+th,td{
+    padding:10px;
+    text-align:center;
+    border-bottom:1px solid #333;
+}
+th{background:#222;}
+.sub{
+    font-size:22px;
+    font-weight:bold;
+    margin-top:28px;
+}
+.pos{color:#00ff99;font-weight:bold;}
+.neg{color:#ff6666;font-weight:bold;}
+.gold{color:#ffd700;font-weight:bold;}
+.total{
+    background:#181818;
+    font-weight:bold;
+}
+canvas{
+    margin-top:25px;
+    background:#1a1a1a;
+    padding:15px;
+    border-radius:14px;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>Party Splitter Financiero Final</h1>
+
+<textarea id="input" placeholder="Pega aquí el Session Data"></textarea>
+
+<button onclick="procesar()">Calcular</button>
+
+<select id="metric" onchange="renderChart()">
+<option value="mvp">MVP Score</option>
+<option value="damageGp">Damage / GP</option>
+<option value="healingGp">Healing / GP</option>
+<option value="dps">DPS</option>
+<option value="hps">HPS</option>
+<option value="lootGp">Loot / GP</option>
+
+</select>
+
+<div id="output"></div>
+
+<canvas id="chart"></canvas>
+
+</div>
+
+<script>
+let players = [];
+let chart = null;
+let seconds = 3600;
+
+function numero(txt){
+    return Number(txt.replace(/[^0-9]/g,'')) || 0;
+}
+
+function money(n){
+    return Math.round(n).toLocaleString('en-US');
+}
+
+function parseSeconds(text){
+    let m = text.match(/(\d+):(\d+)h/);
+    if(!m) return 3600;
+    return parseInt(m[1])*3600 + parseInt(m[2])*60;
+}
+
+function procesar(){
+
+    players = [];
+    let lines = document.getElementById("input").value.split(/\r?\n/);
+    let actual = null;
+
+    for(let line of lines){
+
+        line = line.trim();
+
+        if(line.startsWith("Session:")){
+            seconds = parseSeconds(line);
+        }
+
+        if(
+            line &&
+            !line.startsWith("Loot:") &&
+            !line.startsWith("Supplies:") &&
+            !line.startsWith("Balance:") &&
+            !line.startsWith("Damage:") &&
+            !line.startsWith("Healing:") &&
+            !line.startsWith("Session") &&
+            !line.startsWith("Loot Type")
+        ){
+            actual = {
+                nombre: line.replace("(Leader)","").trim(),
+                loot:0,
+                supply:0,
+                damage:0,
+                healing:0
+            };
+            players.push(actual);
+            continue;
+        }
+
+        if(actual){
+            if(line.startsWith("Loot:")) actual.loot = numero(line);
+            if(line.startsWith("Supplies:")) actual.supply = numero(line);
+            if(line.startsWith("Damage:")) actual.damage = numero(line);
+            if(line.startsWith("Healing:")) actual.healing = numero(line);
+        }
+    }
+
+    if(players.length===0){
+        document.getElementById("output").innerHTML =
+        "<div class='card'>No se detectaron jugadores.</div>";
+        return;
+    }
+
+    calcularMetricas();
+    renderMain();
+    renderChart();
+}
+
+function calcularMetricas(){
+
+    players.forEach(p=>{
+
+        p.damageGp = p.supply>0 ? p.damage/p.supply : 0;
+        p.healingGp = p.supply>0 ? p.healing/p.supply : 0;
+        p.lootGp = p.supply>0 ? p.loot/p.supply : 0;
+        p.dps = p.damage/seconds;
+        p.hps = p.healing/seconds;
+
+        p.mvp =
+            p.damageGp*0.35 +
+            p.healingGp*0.20 +
+            p.lootGp*0.20 +
+            p.dps*0.25;
+    });
+}
+
+function renderMain(){
+
+    const n = players.length;
+    const lootTotal = players.reduce((a,b)=>a+b.loot,0);
+    const supplyTotal = players.reduce((a,b)=>a+b.supply,0);
+    const balance = lootTotal - supplyTotal;
+
+    const top = [...players].sort((a,b)=>b.mvp-a.mvp)[0];
+
+    let html = `
+    <div class="card">
+        <h2>Resumen General</h2>
+        Loot Total: ${money(lootTotal)}<br>
+        Supplies Totales: ${money(supplyTotal)}<br>
+        Balance Final: ${money(balance)}<br>
+        Jugadores: ${n}<br><br>
+        MVP: <span class="gold">${top.nombre}</span>
+    </div>
+    `;
+
+    /* Loot informativo */
+    html += `
+    <div class="sub">Loot Individual (Informativo)</div>
+    <table>
+    <tr><th>Jugador</th><th>Loot</th></tr>
+    `;
+    players.forEach(p=>{
+        html += `<tr><td>${p.nombre}</td><td>${money(p.loot)}</td></tr>`;
+    });
+    html += `
+    <tr class="total"><td>Total Loot</td><td>${money(lootTotal)}</td></tr>
+    </table>
+    `;
+
+    /* REPARTICION */
+    if(balance >= 0){
+
+        const profitEach = balance / n;
+
+        html += `
+        <div class="sub">Repartición Positiva</div>
+
+        <div class="card">
+        Caja Inicial: ${money(lootTotal)}<br>
+        Waste Pagado: ${money(supplyTotal)}<br>
+        Profit Restante: ${money(balance)}<br>
+        Profit por Jugador: ${money(profitEach)}
+        </div>
+
+        <table>
+        <tr>
+            <th>Jugador</th>
+            <th>Supply</th>
+            <th>Waste Pagado</th>
+            <th>Profit</th>
+            <th>Total Recibe</th>
+        </tr>
+        `;
+
+        players.forEach(p=>{
+
+            const total = p.supply + profitEach;
+
+            html += `
+            <tr>
+                <td>${p.nombre}</td>
+                <td>${money(p.supply)}</td>
+                <td class="pos">${money(p.supply)}</td>
+                <td class="pos">${money(profitEach)}</td>
+                <td class="gold">${money(total)}</td>
+            </tr>
+            `;
+        });
+
+        html += `</table>`;
+
+    }else{
+
+        const perdida = Math.abs(balance);
+        const cuota = perdida / n;
+
+        let aportes = 0;
+        let reembolsos = 0;
+
+        players.forEach(p=>{
+            if(p.supply < cuota){
+                aportes += (cuota - p.supply);
+            }else{
+                reembolsos += (p.supply - cuota);
+            }
+        });
+
+        const cajaFinal = lootTotal + aportes;
+
+        html += `
+        <div class="sub">Repartición Negativa</div>
+
+        <div class="card">
+        Loot Inicial: ${money(lootTotal)}<br>
+        Aportes Extra: ${money(aportes)}<br>
+        Caja Final: ${money(cajaFinal)}<br>
+        Reembolsado: ${money(reembolsos)}<br>
+        Pérdida por Jugador: ${money(cuota)}
+        </div>
+
+        <table>
+        <tr>
+            <th>Jugador</th>
+            <th>Supply</th>
+            <th>Pone Dinero</th>
+            <th>Recibe Dinero</th>
+            <th>Resultado Final</th>
+        </tr>
+        `;
+
+        players.forEach(p=>{
+
+            let pone = 0;
+            let recibe = 0;
+
+            if(p.supply < cuota){
+                pone = cuota - p.supply;
+            }else{
+                recibe = p.supply - cuota;
+            }
+
+            html += `
+            <tr>
+                <td>${p.nombre}</td>
+                <td>${money(p.supply)}</td>
+                <td class="${pone>0?'neg':'pos'}">${pone>0?money(pone):'-'}</td>
+                <td class="${recibe>0?'pos':'neg'}">${recibe>0?money(recibe):'-'}</td>
+                <td class="gold">-${money(cuota)}</td>
+            </tr>
+            `;
+        });
+
+        html += `</table>`;
+    }
+
+    /* Analytics */
+    html += `
+    <div class="sub">Analytics</div>
+    <table>
+    <tr>
+        <th>Jugador</th>
+        <th>Damage/GP</th>
+        <th>Healing/GP</th>
+        <th>DPS</th>
+        <th>MVP</th>
+    </tr>
+    `;
+
+    players.forEach(p=>{
+
+        html += `
+        <tr>
+            <td>${p.nombre}</td>
+            <td>${p.damageGp.toFixed(2)}</td>
+            <td>${p.healingGp.toFixed(2)}</td>
+            <td>${p.dps.toFixed(2)}</td>
+            <td class="${p.nombre===top.nombre?'gold':'pos'}">${p.mvp.toFixed(2)}</td>
+        </tr>
+        `;
+    });
+
+    html += `</table>`;
+
+    document.getElementById("output").innerHTML = html;
+}
+
+function renderChart(){
+
+    if(players.length===0) return;
+
+    const metric = document.getElementById("metric").value;
+
+    const labels = players.map(p=>p.nombre);
+    const data = players.map(p=>p[metric]);
+
+    if(chart) chart.destroy();
+
+    chart = new Chart(document.getElementById("chart"),{
+        type:'bar',
+        data:{
+            labels:labels,
+            datasets:[{
+                label:metric,
+                data:data
+            }]
+        },
+        options:{
+            responsive:true,
+            plugins:{
+                legend:{
+                    labels:{color:'white'}
+                }
+            },
+            scales:{
+                x:{ticks:{color:'white'}},
+                y:{ticks:{color:'white'}}
+            }
+        }
+    });
+}
+</script>
+
+</body>
+</html>
