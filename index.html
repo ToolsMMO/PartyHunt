@@ -108,7 +108,6 @@ canvas{
 <option value="healingGp">Healing / GP</option>
 <option value="dps">DPS</option>
 <option value="hps">HPS</option>
-<option value="lootGp">Loot / GP</option>
 
 </select>
 <canvas id="chart"></canvas>
@@ -193,21 +192,37 @@ function procesar(){
 
 function calcularMetricas(){
 
-    players.forEach(p=>{
+    const totalSupply = players.reduce((a,p)=>a+p.supply,0);
+    const totalDamage = players.reduce((a,p)=>a+p.damage,0);
+    const totalHealing = players.reduce((a,p)=>a+p.healing,0);
+    const totalLoot = players.reduce((a,p)=>a+p.loot,0);
 
-        p.damageGp = p.supply>0 ? p.damage/p.supply : 0;
-        p.healingGp = p.supply>0 ? p.healing/p.supply : 0;
-        p.lootGp = p.supply>0 ? p.loot/p.supply : 0;
-        p.dps = p.damage/seconds;
-        p.hps = p.healing/seconds;
+    players.forEach(p => {
 
+        // ratios individuales (eficiencia)
+        p.damageGp = p.supply > 0 ? p.damage / p.supply : 0;
+        p.healingGp = p.supply > 0 ? p.healing / p.supply : 0;
+        p.lootGp = p.supply > 0 ? p.loot / p.supply : 0;
+
+        // tiempo (ya lo tenías)
+        p.dps = p.damage / seconds;
+        p.hps = p.healing / seconds;
+
+        // contribución relativa (lo importante ahora)
+        p.supplyPct = totalSupply > 0 ? p.supply / totalSupply : 0;
+        p.damagePct = totalDamage > 0 ? p.damage / totalDamage : 0;
+        p.healingPct = totalHealing > 0 ? p.healing / totalHealing : 0;
+        p.lootPct = totalLoot > 0 ? p.loot / totalLoot : 0;
+
+        // MVP final (todo en la misma escala: 0–1)
         p.mvp =
-            p.damageGp*0.35 +
-            p.healingGp*0.20 +
-            p.lootGp*0.20 +
-            p.dps*0.25;
+            (p.damagePct*100) * 0.50 +
+            (p.healingPct*100) * 0.20 +
+            ((1 - p.supplyPct)*100) * 0.30;
+
     });
 }
+
 
 function renderMain(){
 
